@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+
+shopt -s extglob
+
+
+function help() {
+  echo "Usage: $0 <snapshot|cleanup>"
+}
+
+
+function check_value() {
+  echo ${1} | egrep '^[0-9]+$' &>/dev/null
+  echo $?
+}
+
+
+function snapshot() {
+  echo 'Daily snapshot:'
+  rc=0
+  DATE=$(date -I)
+  DATASETS=$(zfs list -H -o name)
+
+  for DATASET in $DATASETS; do
+    KEEP_NUMBER_DAILY=$(zfs get -H  -o value snapshot:daily $DATASET | sed 's/^-$//')
+    KEEP_NUMBER_WEEKLY=$(zfs get -H  -o value snapshot:weekly $DATASET | sed 's/^-$//')
+    KEEP_NUMBER_MONTHLY=$(zfs get -H  -o value snapshot:monthly $DATASET | sed 's/^-$//')
+    KEEP_NUMBER_YEARLY=$(zfs get -H  -o value snapshot:yearly $DATASET | sed 's/^-$//')
+    if [ -z "${KEEP_NUMBER_DAILY}${KEEP_NUMBER_WEEKLY}${KEEP_NUMBER_MONTHLY}${KEEP_NUMBER_YEARLY}" ]; then
+        continue
+    fi
+
+    echo "------------------------"
+    date
+
+    echo "Creating snapshot ${DATASET}@${DATE}"
+    zfs snapshot ${DATASET}@${DATE}
+
+    echo "------------------------"
+
+    rcnow=$?
+    if [ "${rcnow}" != "0" ]; then
+      rc="${rcnow}"
+    fi
+  done
+  return $rc
+}
+
+function cleanup() {
+  echo 'Daily snapshot:'
+  rc=0
+  DATE=$(date -I)
+  DATASETS=$(zfs list -H -o name)
+
+  for DATASET in $DATASETS; do
+    KEEP_NUMBER_DAILY=$(zfs get -H -o value snapshot:daily $DATASET | sed 's/^-$/0/')
+    KEEP_NUMBER_WEEKLY=$(zfs get -H -o value snapshot:weekly $DATASET | sed 's/^-$/0/')
+    KEEP_NUMBER_MONTHLY=$(zfs get -H -o value snapshot:monthly $DATASET | sed 's/^-$/0/')
+    KEEP_NUMBER_YEARLY=$(zfs get -H -o value snapshot:yearly $DATASET | sed 's/^-$/0/')
+    EXISTING_SNAPSHOTS=$(zfs list -H -o name -t snapshot $DATASET)
+    RAW_KEEP_SNAPSHOTS=""
+
+    ret=`check_value ${KEEP_NUMBER_DAILY}`
+    if [ "${ret}" != "0" ]; then
+      echo "Value ${KEEP_NUMBER_DAILY} for snapshot:daily on ${DATASET} is invalid" >&2
+      exit 1
+    fi
+
+    ret=`check_value ${KEEP_NUMBER_WEEKLY}`
+    if [ "${ret}" != "0" ]; then
+      echo "Value ${KEEP_NUMBER_WEEKLY} for snapshot:weekly on ${DATASET} is invalid" >&2
+      exit 1
+    fi
+
+    ret=`check_value ${KEEP_NUMBER_MONTHLY}`
+    if [ "${ret}" != "0" ]; then
+      echo "Value ${KEEP_NUMBER_MONTHLY} for snapshot:monthly on ${DATASET} is invalid" >&2
+      exit 1
+    fi
+
+    ret=`check_value ${KEEP_NUMBER_YEARLY}`
+    if [ "${ret}" != "0" ]; then
+      echo "Value ${KEEP_NUMBER_YEARLY} for snapshot:yearly on ${DATASET} is invalid" >&2
+      exit 1
+    fi
+
+    echo "------------------------"
+    date
+
+    for (( index=0; index<${KEEP_NUMBER_DAILY}; index=index+1 )) ; do
+      CHECK_DATE=$(date -v-${index}d -I)
+      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
+        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      else
+        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+      fi
+    done
+
+    for (( index=0; index<${KEEP_NUMBER_WEEKLY}; index=index+1 )) ; do
+      CHECK_DATE=$(date -v-${index}w -I)
+      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
+        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      else
+        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+      fi
+    done
+
+    for (( index=0; index<${KEEP_NUMBER_MONTHLY}; index=index+1 )) ; do
+      CHECK_DATE=$(date -v-${index}m -I)
+      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
+        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      else
+        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+      fi
+    done
+
+    for (( index=0; index<${KEEP_NUMBER_YEARLY}; index=index+1 )) ; do
+      CHECK_DATE=$(date -v-${index}y -I)
+      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
+        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      else
+        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+      fi
+    done
+
+    KEEP_SNAPSHOTS="+(${RAW_KEEP_SNAPSHOTS})"
+    echo "Dataset: $DATASET"
+    echo "KEEP_SNAPSHOTS"
+    echo "${RAW_KEEP_SNAPSHOTS}" | sed -e 's/|/\n/g'
+
+    for snapshot in ${EXISTING_SNAPSHOTS}; do
+      case ${snapshot} in
+        ${KEEP_SNAPSHOTS})
+          echo "${snapshot} exists"
+          ;;
+        *)
+          echo "Remove ${snapshot}"
+          zfs destroy ${snapshot}
+          ;;
+      esac
+    done
+  done
+  echo "------------------------"
+  return $rc
+}
+
+
+case $1 in
+  snapshot|cleanup|help)
+    $@
+    ;;
+  *)
+    echo "Error!"
+    exit 1
+    ;;
+esac
