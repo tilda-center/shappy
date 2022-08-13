@@ -1,20 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-shopt -s extglob
-
-
-function help() {
+help() {
   echo "Usage: $0 <snapshot|cleanup>"
 }
 
 
-function check_value() {
+check_value() {
   echo ${1} | egrep '^[0-9]+$' &>/dev/null
   echo $?
 }
 
 
-function snapshot() {
+snapshot() {
   echo 'Daily snapshot:'
   rc=0
   DATE=$(date -I)
@@ -45,8 +42,8 @@ function snapshot() {
   return $rc
 }
 
-function cleanup() {
-  echo 'Daily snapshot:'
+cleanup() {
+  echo 'ZFS snapshot cleanup:'
   rc=0
   DATE=$(date -I)
   DATASETS=$(zfs list -H -o name)
@@ -57,86 +54,86 @@ function cleanup() {
     KEEP_NUMBER_MONTHLY=$(zfs get -H -o value snapshot:monthly $DATASET | sed 's/^-$/0/')
     KEEP_NUMBER_YEARLY=$(zfs get -H -o value snapshot:yearly $DATASET | sed 's/^-$/0/')
     EXISTING_SNAPSHOTS=$(zfs list -H -o name -t snapshot $DATASET)
-    RAW_KEEP_SNAPSHOTS=""
+    KEEP_SNAPSHOTS=""
 
-    ret=`check_value ${KEEP_NUMBER_DAILY}`
-    if [ "${ret}" != "0" ]; then
+    echo ${KEEP_NUMBER_DAILY} | egrep '^[0-9]+$' >/dev/null 2>&1
+    if [ "$?" != "0" ]; then
       echo "Value ${KEEP_NUMBER_DAILY} for snapshot:daily on ${DATASET} is invalid" >&2
       exit 1
     fi
 
-    ret=`check_value ${KEEP_NUMBER_WEEKLY}`
-    if [ "${ret}" != "0" ]; then
+    echo ${KEEP_NUMBER_WEEKLY} | egrep '^[0-9]+$' >/dev/null 2>&1
+    if [ "$?" != "0" ]; then
       echo "Value ${KEEP_NUMBER_WEEKLY} for snapshot:weekly on ${DATASET} is invalid" >&2
       exit 1
     fi
 
-    ret=`check_value ${KEEP_NUMBER_MONTHLY}`
-    if [ "${ret}" != "0" ]; then
+    echo ${KEEP_NUMBER_MONTHLY} | egrep '^[0-9]+$' >/dev/null 2>&1
+    if [ "$?" != "0" ]; then
       echo "Value ${KEEP_NUMBER_MONTHLY} for snapshot:monthly on ${DATASET} is invalid" >&2
       exit 1
     fi
 
-    ret=`check_value ${KEEP_NUMBER_YEARLY}`
-    if [ "${ret}" != "0" ]; then
+    echo ${KEEP_NUMBER_YEARLY} | egrep '^[0-9]+$' >/dev/null 2>&1
+    if [ "$?" != "0" ]; then
       echo "Value ${KEEP_NUMBER_YEARLY} for snapshot:yearly on ${DATASET} is invalid" >&2
       exit 1
     fi
 
     echo "------------------------"
-    date
 
-    for (( index=0; index<${KEEP_NUMBER_DAILY}; index=index+1 )) ; do
+    index=0
+    while [ "${index}" != "${KEEP_NUMBER_DAILY}" ]; do
       CHECK_DATE=$(date -v-${index}d -I)
-      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
-        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      if [ -z "${KEEP_SNAPSHOTS}" ]; then
+        KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
       else
-        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+        KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS} ${DATASET}@${CHECK_DATE}"
       fi
+      let index=$index+1 >/dev/null
     done
 
-    for (( index=0; index<${KEEP_NUMBER_WEEKLY}; index=index+1 )) ; do
+    index=0
+    while [ "${index}" != "${KEEP_NUMBER_WEEKLY}" ]; do
       CHECK_DATE=$(date -v-${index}w -I)
-      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
-        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      if [ -z "${KEEP_SNAPSHOTS}" ]; then
+        KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
       else
-        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+        KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS} ${DATASET}@${CHECK_DATE}"
       fi
+      let index=$index+1 >/dev/null
     done
 
-    for (( index=0; index<${KEEP_NUMBER_MONTHLY}; index=index+1 )) ; do
+    index=0
+    while [ "${index}" != "${KEEP_NUMBER_MONTHLY}" ]; do
       CHECK_DATE=$(date -v-${index}m -I)
-      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
-        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      if [ -z "${KEEP_SNAPSHOTS}" ]; then
+        KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
       else
-        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+        KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS} ${DATASET}@${CHECK_DATE}"
       fi
+      let index=$index+1 >/dev/null
     done
 
-    for (( index=0; index<${KEEP_NUMBER_YEARLY}; index=index+1 )) ; do
+    index=0
+    while [ "${index}" != "${KEEP_NUMBER_YEARLY}" ]; do
       CHECK_DATE=$(date -v-${index}y -I)
-      if [ -z "${RAW_KEEP_SNAPSHOTS}" ]; then
-        RAW_KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
+      if [ -z "${KEEP_SNAPSHOTS}" ]; then
+        KEEP_SNAPSHOTS="${DATASET}@${CHECK_DATE}"
       else
-        RAW_KEEP_SNAPSHOTS="${RAW_KEEP_SNAPSHOTS}|${DATASET}@${CHECK_DATE}"
+        KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS} ${DATASET}@${CHECK_DATE}"
       fi
+      let index=$index+1 >/dev/null
     done
 
-    KEEP_SNAPSHOTS="+(${RAW_KEEP_SNAPSHOTS})"
     echo "Dataset: $DATASET"
-    echo "KEEP_SNAPSHOTS"
-    echo "${RAW_KEEP_SNAPSHOTS}" | sed -e 's/|/\n/g'
 
     for snapshot in ${EXISTING_SNAPSHOTS}; do
-      case ${snapshot} in
-        ${KEEP_SNAPSHOTS})
-          echo "${snapshot} exists"
-          ;;
-        *)
-          echo "Remove ${snapshot}"
-          zfs destroy ${snapshot}
-          ;;
-      esac
+      echo "${KEEP_SNAPSHOTS}" | grep -o "${snapshot}" >/dev/null 2>&1
+      if [ "$?" != "0" ]; then
+        echo "Remove ${snapshot}"
+        zfs destroy ${snapshot}
+      fi
     done
   done
   echo "------------------------"
@@ -146,6 +143,7 @@ function cleanup() {
 
 case $1 in
   snapshot|cleanup|help)
+    date
     $@
     ;;
   *)
