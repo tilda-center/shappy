@@ -8,7 +8,21 @@
 .Nm shappy <snapshot|cleanup>
 .Sh DESCRIPTION
 .Pp
-\fBShappy\fR is an open source program to make snapshotting of ZFS easy.
+\fBShappy\fR makes snapshotting of ZFS easy. All configuration is kept in ZFS
+attributes:
+.Pp
+.Bl -tag -width Fa -compact
+.It Cm snapshot:on
+Any value except "yes" skips the dataset completely
+.It Cm snapshot:daily=<number>
+Number of daily snapshots to keep
+.It Cm snapshot:weekly=<number>
+Number of weekly snapshots to keep
+.It Cm snapshot:monthly=<number>
+Number of montly snapshots to keep
+.It Cm snapshot:yearly=<number>
+Number of yearly snapshots to keep
+.El
 .Sh SEE ALSO
 .Xr zfs 8
 .Sh BUGS

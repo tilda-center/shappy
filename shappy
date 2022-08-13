@@ -18,6 +18,10 @@ snapshot() {
   DATASETS=$(zfs list -H -o name)
 
   for DATASET in $DATASETS; do
+    ON=$(zfs get -H  -o value snapshot:on $DATASET)
+    if [ "${ON}" != "yes" ]; then
+      continue
+    fi
     KEEP_NUMBER_DAILY=$(zfs get -H  -o value snapshot:daily $DATASET | sed 's/^-$//')
     KEEP_NUMBER_WEEKLY=$(zfs get -H  -o value snapshot:weekly $DATASET | sed 's/^-$//')
     KEEP_NUMBER_MONTHLY=$(zfs get -H  -o value snapshot:monthly $DATASET | sed 's/^-$//')
@@ -49,6 +53,10 @@ cleanup() {
   DATASETS=$(zfs list -H -o name)
 
   for DATASET in $DATASETS; do
+    ON=$(zfs get -H  -o value snapshot:on $DATASET)
+    if [ "${ON}" != "yes" ]; then
+      continue
+    fi
     KEEP_NUMBER_DAILY=$(zfs get -H -o value snapshot:daily $DATASET | sed 's/^-$/0/')
     KEEP_NUMBER_WEEKLY=$(zfs get -H -o value snapshot:weekly $DATASET | sed 's/^-$/0/')
     KEEP_NUMBER_MONTHLY=$(zfs get -H -o value snapshot:monthly $DATASET | sed 's/^-$/0/')
